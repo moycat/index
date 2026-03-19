@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS posts (
     id VARCHAR(128) NOT NULL,
     title VARCHAR(512) NOT NULL,
-    url VARCHAR(1024) NOT NULL,
+    url VARCHAR(750) NOT NULL,
     content LONGTEXT NOT NULL,
     published_at DATETIME(6) NOT NULL,
     snapshot_id VARCHAR(128) NOT NULL,
