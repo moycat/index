@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -24,10 +25,10 @@ func newTestRepo() *testRepo {
 	return &testRepo{posts: make(map[string]data.Post)}
 }
 
-func (r *testRepo) ReplaceSnapshot(ctx context.Context, snapshot data.Snapshot) error {
-	r.posts = make(map[string]data.Post, len(snapshot.Posts))
-	for _, post := range snapshot.Posts {
-		r.posts[post.ID] = post
+func (r *testRepo) ReindexAllPosts(ctx context.Context, req data.IndexRequest) error {
+	r.posts = make(map[string]data.Post, len(req.Posts))
+	for i, post := range req.Posts {
+		r.posts[strconv.Itoa(i)] = post
 	}
 	return nil
 }
@@ -40,33 +41,30 @@ func (r *testRepo) Search(ctx context.Context, query string, limit, offset int) 
 	return rows, nil
 }
 
-func TestRouterIngestAuth(t *testing.T) {
+func TestRouterIndexAuth(t *testing.T) {
 	repo := newTestRepo()
-	ingest := service.NewIngestService(repo)
+	indexSvc := service.NewIndexService(repo)
 	search := service.NewSearchService(repo, ngram.NewTokenizer(2), snippet.NewBuilder(), 50)
 	router := NewRouter(Dependencies{
-		IngestService: ingest,
+		IndexService:  indexSvc,
 		SearchService: search,
 		AuthToken:     "secret",
 		Logger:        log.New(),
 	})
 
 	payload := map[string]any{
-		"snapshot_id":  "snapshot-1",
-		"generated_at": time.Now().UTC().Format(time.RFC3339),
-		"posts": []map[string]string{
+		"posts": []map[string]any{
 			{
-				"id":           "post-1",
 				"title":        "Title",
 				"url":          "https://example.com/1",
 				"content":      "hello world",
-				"published_at": time.Now().UTC().Format(time.RFC3339),
+				"published_at": int64(1700000000),
 			},
 		},
 	}
 	body, _ := json.Marshal(payload)
 
-	req := httptest.NewRequest(http.MethodPut, "/v1/posts/snapshot", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/v1/index", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
@@ -74,7 +72,7 @@ func TestRouterIngestAuth(t *testing.T) {
 		t.Fatalf("expected 401, got %d", resp.Code)
 	}
 
-	req2 := httptest.NewRequest(http.MethodPut, "/v1/posts/snapshot", bytes.NewReader(body))
+	req2 := httptest.NewRequest(http.MethodPost, "/v1/index", bytes.NewReader(body))
 	req2.Header.Set("Content-Type", "application/json")
 	req2.Header.Set("Authorization", "Bearer secret")
 	resp2 := httptest.NewRecorder()
@@ -87,11 +85,8 @@ func TestRouterIngestAuth(t *testing.T) {
 func TestRouterSearch(t *testing.T) {
 	repo := newTestRepo()
 	now := time.Now().UTC()
-	_ = repo.ReplaceSnapshot(context.Background(), data.Snapshot{
-		SnapshotID:  "snapshot-for-search",
-		GeneratedAt: now,
+	_ = repo.ReindexAllPosts(context.Background(), data.IndexRequest{
 		Posts: []data.Post{{
-			ID:          "post-1",
 			Title:       "中文检索实践",
 			URL:         "https://example.com/1",
 			Content:     "介绍中文搜索实现。",
@@ -100,7 +95,7 @@ func TestRouterSearch(t *testing.T) {
 	})
 
 	router := NewRouter(Dependencies{
-		IngestService: service.NewIngestService(repo),
+		IndexService:  service.NewIndexService(repo),
 		SearchService: service.NewSearchService(repo, ngram.NewTokenizer(2), snippet.NewBuilder(), 50),
 		AuthToken:     "secret",
 		Logger:        log.New(),

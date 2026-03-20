@@ -61,6 +61,7 @@ func (s *SearchService) Search(ctx context.Context, query string, page, pageSize
 		hits = append(hits, data.SearchHit{
 			Title:        row.Post.Title,
 			URL:          row.Post.URL,
+			PublishedAt:  row.Post.PublishedAt.Unix(),
 			Snippet:      s.snippet.Build(row.Post.Content, matchedTerms, s.snippetRunes),
 			Score:        row.Score,
 			MatchedTerms: matchedTerms,

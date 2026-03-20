@@ -10,13 +10,13 @@ import (
 )
 
 type fakeRepo struct {
-	replaceSnapshotFn func(ctx context.Context, snapshot data.Snapshot) error
+	reindexAllPostsFn func(ctx context.Context, req data.IndexRequest) error
 	searchFn          func(ctx context.Context, query string, limit, offset int) ([]data.SearchRow, error)
 }
 
-func (f *fakeRepo) ReplaceSnapshot(ctx context.Context, snapshot data.Snapshot) error {
-	if f.replaceSnapshotFn != nil {
-		return f.replaceSnapshotFn(ctx, snapshot)
+func (f *fakeRepo) ReindexAllPosts(ctx context.Context, req data.IndexRequest) error {
+	if f.reindexAllPostsFn != nil {
+		return f.reindexAllPostsFn(ctx, req)
 	}
 	return nil
 }
@@ -28,14 +28,11 @@ func (f *fakeRepo) Search(ctx context.Context, query string, limit, offset int) 
 	return nil, nil
 }
 
-func TestIngestServiceReplaceSnapshot(t *testing.T) {
+func TestIndexServiceReindexAllPosts(t *testing.T) {
 	now := time.Now().UTC()
-	validSnapshot := data.Snapshot{
-		SnapshotID:  "snapshot-1",
-		GeneratedAt: now,
+	validRequest := data.IndexRequest{
 		Posts: []data.Post{
 			{
-				ID:          "post-1",
 				Title:       "Hello",
 				URL:         "https://example.com/p/1",
 				Content:     "content",
@@ -45,23 +42,23 @@ func TestIngestServiceReplaceSnapshot(t *testing.T) {
 	}
 
 	tests := []struct {
-		name     string
-		snapshot data.Snapshot
-		repoErr  error
-		wantErr  bool
+		name    string
+		req     data.IndexRequest
+		repoErr error
+		wantErr bool
 	}{
-		{name: "ok", snapshot: validSnapshot},
-		{name: "validation error", snapshot: data.Snapshot{}, wantErr: true},
-		{name: "repository error", snapshot: validSnapshot, repoErr: errors.New("db down"), wantErr: true},
+		{name: "ok", req: validRequest},
+		{name: "validation error", req: data.IndexRequest{Posts: []data.Post{{}}}, wantErr: true},
+		{name: "repository error", req: validRequest, repoErr: errors.New("db down"), wantErr: true},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			repo := &fakeRepo{replaceSnapshotFn: func(ctx context.Context, snapshot data.Snapshot) error {
+			repo := &fakeRepo{reindexAllPostsFn: func(ctx context.Context, req data.IndexRequest) error {
 				return tc.repoErr
 			}}
-			svc := NewIngestService(repo)
-			err := svc.ReplaceSnapshot(context.Background(), tc.snapshot)
+			svc := NewIndexService(repo)
+			err := svc.ReindexAllPosts(context.Background(), tc.req)
 			if tc.wantErr && err == nil {
 				t.Fatalf("expected error")
 			}

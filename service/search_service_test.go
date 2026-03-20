@@ -17,7 +17,6 @@ func TestSearchServiceSearch(t *testing.T) {
 			return []data.SearchRow{
 				{
 					Post: data.Post{
-						ID:          "1",
 						Title:       "Go 和中文检索",
 						URL:         "https://example.com/1",
 						Content:     "这是一篇关于 Golang 全文检索的文章。",

@@ -9,7 +9,6 @@ import (
 
 // Post is the canonical blog document stored and searched by the service.
 type Post struct {
-	ID          string
 	Title       string
 	URL         string
 	Content     string
@@ -17,9 +16,6 @@ type Post struct {
 }
 
 func (p Post) Validate() error {
-	if strings.TrimSpace(p.ID) == "" {
-		return fmt.Errorf("id is required")
-	}
 	if strings.TrimSpace(p.Title) == "" {
 		return fmt.Errorf("title is required")
 	}
@@ -46,6 +42,7 @@ type SearchRow struct {
 type SearchHit struct {
 	Title        string   `json:"title"`
 	URL          string   `json:"url"`
+	PublishedAt  int64    `json:"published_at"`
 	Snippet      string   `json:"snippet"`
 	Score        float64  `json:"score,omitempty"`
 	MatchedTerms []string `json:"matched_terms,omitempty"`

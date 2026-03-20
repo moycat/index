@@ -1,6 +1,6 @@
 addr = ":8080"
 # Replace with your own DSN. Do not commit real credentials.
 dsn = "index:index_password@tcp(127.0.0.1:3306)/index?parseTime=true&charset=utf8mb4"
-ingest_token = "change-me"
+index_token = "change-me"
 snippet_max_runes = 160
 debug = false

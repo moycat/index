@@ -2,7 +2,6 @@ package mysql
 
 import (
 	"context"
-	"database/sql"
 	"regexp"
 	"testing"
 	"time"
@@ -11,7 +10,7 @@ import (
 	"github.com/moycat/index/data"
 )
 
-func TestPostRepositoryReplaceSnapshot(t *testing.T) {
+func TestPostRepositoryReindexAllPosts(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("create sqlmock: %v", err)
@@ -20,11 +19,8 @@ func TestPostRepositoryReplaceSnapshot(t *testing.T) {
 
 	repo := NewPostRepository(db)
 	now := time.Now().UTC()
-	snapshot := data.Snapshot{
-		SnapshotID:  "snapshot-1",
-		GeneratedAt: now,
+	req := data.IndexRequest{
 		Posts: []data.Post{{
-			ID:          "post-1",
 			Title:       "title",
 			URL:         "https://example.com/1",
 			Content:     "content",
@@ -33,46 +29,14 @@ func TestPostRepositoryReplaceSnapshot(t *testing.T) {
 	}
 
 	mock.ExpectBegin()
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT 1 FROM ingest_snapshots WHERE snapshot_id = ? LIMIT 1")).
-		WithArgs(snapshot.SnapshotID).
-		WillReturnError(sql.ErrNoRows)
-	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO posts (id, title, url, content, published_at, snapshot_id)")).
-		WithArgs(snapshot.Posts[0].ID, snapshot.Posts[0].Title, snapshot.Posts[0].URL, snapshot.Posts[0].Content, snapshot.Posts[0].PublishedAt, snapshot.SnapshotID).
-		WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM posts WHERE snapshot_id <> ?")).
-		WithArgs(snapshot.SnapshotID).
-		WillReturnResult(sqlmock.NewResult(0, 0))
-	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO ingest_snapshots (snapshot_id, generated_at, post_count) VALUES (?, ?, ?)")).
-		WithArgs(snapshot.SnapshotID, snapshot.GeneratedAt, len(snapshot.Posts)).
+	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM posts")).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO posts (title, url, content, published_at)")).
+		WithArgs(req.Posts[0].Title, req.Posts[0].URL, req.Posts[0].Content, req.Posts[0].PublishedAt).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 
-	if err := repo.ReplaceSnapshot(context.Background(), snapshot); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatalf("unmet expectations: %v", err)
-	}
-}
-
-func TestPostRepositoryReplaceSnapshotIdempotent(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("create sqlmock: %v", err)
-	}
-	defer db.Close()
-
-	repo := NewPostRepository(db)
-	now := time.Now().UTC()
-	snapshot := data.Snapshot{SnapshotID: "snapshot-existing", GeneratedAt: now}
-
-	mock.ExpectBegin()
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT 1 FROM ingest_snapshots WHERE snapshot_id = ? LIMIT 1")).
-		WithArgs(snapshot.SnapshotID).
-		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(1))
-	mock.ExpectCommit()
-
-	if err := repo.ReplaceSnapshot(context.Background(), snapshot); err != nil {
+	if err := repo.ReindexAllPosts(context.Background(), req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -90,9 +54,9 @@ func TestPostRepositorySearch(t *testing.T) {
 	repo := NewPostRepository(db)
 	now := time.Now().UTC()
 
-	rows := sqlmock.NewRows([]string{"id", "title", "url", "content", "published_at", "score"}).
-		AddRow("post-1", "中文", "https://example.com/1", "content", now, 1.2)
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, title, url, content, published_at,")).
+	rows := sqlmock.NewRows([]string{"title", "url", "content", "published_at", "score"}).
+		AddRow("中文", "https://example.com/1", "content", now, 1.2)
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT title, url, content, published_at,")).
 		WithArgs("中文", "中文", 10, 0).
 		WillReturnRows(rows)
 

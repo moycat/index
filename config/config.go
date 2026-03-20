@@ -11,7 +11,7 @@ import (
 type Config struct {
 	Addr            string `toml:"addr"`
 	DSN             string `toml:"dsn"`
-	IngestToken     string `toml:"ingest_token"`
+	IndexToken      string `toml:"index_token"`
 	SnippetMaxRunes int    `toml:"snippet_max_runes"`
 	Debug           bool   `toml:"debug"`
 }
@@ -37,8 +37,8 @@ func Load(path string) (Config, error) {
 	if strings.TrimSpace(cfg.DSN) == "" {
 		return Config{}, fmt.Errorf("dsn is required")
 	}
-	if strings.TrimSpace(cfg.IngestToken) == "" {
-		return Config{}, fmt.Errorf("ingest_token is required")
+	if strings.TrimSpace(cfg.IndexToken) == "" {
+		return Config{}, fmt.Errorf("index_token is required")
 	}
 	if cfg.SnippetMaxRunes <= 0 {
 		return Config{}, fmt.Errorf("snippet_max_runes must be greater than 0")

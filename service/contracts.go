@@ -7,7 +7,7 @@ import (
 )
 
 type PostRepository interface {
-	ReplaceSnapshot(ctx context.Context, snapshot data.Snapshot) error
+	ReindexAllPosts(ctx context.Context, req data.IndexRequest) error
 	Search(ctx context.Context, query string, limit, offset int) ([]data.SearchRow, error)
 }
 

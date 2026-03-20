@@ -47,13 +47,13 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	}
 
 	repo := mysqlrepo.NewPostRepository(db)
-	ingestService := service.NewIngestService(repo)
+	indexService := service.NewIndexService(repo)
 	searchService := service.NewSearchService(repo, ngram.NewTokenizer(2), snippet.NewBuilder(), cfg.SnippetMaxRunes)
 
 	router := adapterhttp.NewRouter(adapterhttp.Dependencies{
-		IngestService: ingestService,
+		IndexService:  indexService,
 		SearchService: searchService,
-		AuthToken:     cfg.IngestToken,
+		AuthToken:     cfg.IndexToken,
 		Debug:         cfg.Debug,
 		Logger:        logger,
 	})

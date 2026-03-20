@@ -12,7 +12,7 @@ func TestLoadConfig(t *testing.T) {
 	content := `
 addr = ":18080"
 dsn = "user:pwd@tcp(127.0.0.1:3306)/index?parseTime=true"
-ingest_token = "token"
+index_token = "token"
 snippet_max_runes = 120
 debug = true
 `
@@ -48,7 +48,7 @@ func TestLoadConfigValidation(t *testing.T) {
 	content := `
 addr = ":8080"
 dsn = ""
-ingest_token = "token"
+index_token = "token"
 snippet_max_runes = 0
 `
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {

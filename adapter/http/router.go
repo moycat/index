@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/moycat/index/data"
 	"github.com/moycat/index/service"
@@ -14,25 +15,22 @@ import (
 )
 
 type Dependencies struct {
-	IngestService *service.IngestService
+	IndexService  *service.IndexService
 	SearchService *service.SearchService
 	AuthToken     string
 	Debug         bool
 	Logger        *log.Logger
 }
 
-type ingestRequest struct {
-	SnapshotID  string             `json:"snapshot_id"`
-	GeneratedAt string             `json:"generated_at"`
-	Posts       []ingestPostRecord `json:"posts"`
+type indexRequest struct {
+	Posts []indexPostRecord `json:"posts"`
 }
 
-type ingestPostRecord struct {
-	ID          string `json:"id"`
+type indexPostRecord struct {
 	Title       string `json:"title"`
 	URL         string `json:"url"`
 	Content     string `json:"content"`
-	PublishedAt string `json:"published_at"`
+	PublishedAt int64  `json:"published_at"`
 }
 
 type errorBody struct {
@@ -51,7 +49,7 @@ func NewRouter(deps Dependencies) *gin.Engine {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.New()
-	r.Use(gin.Recovery())
+	r.Use(gin.Recovery(), cors.Default())
 	r.Use(requestLogger(deps.Logger))
 
 	r.GET("/healthz", func(c *gin.Context) {
@@ -78,30 +76,21 @@ func NewRouter(deps Dependencies) *gin.Engine {
 		})
 	})
 
-	ingest := v1.Group("/posts")
-	ingest.Use(authMiddleware(deps.AuthToken))
-	ingest.PUT("/snapshot", func(c *gin.Context) {
-		var req ingestRequest
+	v1.POST("/index", authMiddleware(deps.AuthToken), func(c *gin.Context) {
+		var req indexRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			writeError(c, fmt.Errorf("%w: invalid json payload", service.ErrInvalidArgument))
 			return
 		}
 
-		generatedAt, err := time.Parse(time.RFC3339, req.GeneratedAt)
-		if err != nil {
-			writeError(c, fmt.Errorf("%w: generated_at must be RFC3339", service.ErrInvalidArgument))
-			return
-		}
-
 		posts := make([]data.Post, 0, len(req.Posts))
 		for _, item := range req.Posts {
-			publishedAt, err := time.Parse(time.RFC3339, item.PublishedAt)
-			if err != nil {
-				writeError(c, fmt.Errorf("%w: published_at must be RFC3339", service.ErrInvalidArgument))
+			if item.PublishedAt <= 0 {
+				writeError(c, fmt.Errorf("%w: published_at must be unix timestamp in seconds", service.ErrInvalidArgument))
 				return
 			}
+			publishedAt := time.Unix(item.PublishedAt, 0).UTC()
 			posts = append(posts, data.Post{
-				ID:          item.ID,
 				Title:       item.Title,
 				URL:         item.URL,
 				Content:     item.Content,
@@ -109,19 +98,16 @@ func NewRouter(deps Dependencies) *gin.Engine {
 			})
 		}
 
-		snapshot := data.Snapshot{
-			SnapshotID:  req.SnapshotID,
-			GeneratedAt: generatedAt,
-			Posts:       posts,
+		indexReq := data.IndexRequest{
+			Posts: posts,
 		}
-		if err := deps.IngestService.ReplaceSnapshot(c.Request.Context(), snapshot); err != nil {
+		if err := deps.IndexService.ReindexAllPosts(c.Request.Context(), indexReq); err != nil {
 			writeError(c, err)
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{
-			"status":      "replaced",
-			"snapshot_id": req.SnapshotID,
-			"post_count":  len(posts),
+			"status":     "indexed",
+			"post_count": len(posts),
 		})
 	})
 

@@ -1,39 +1,32 @@
 # Index API Usage Guide
 
-This document explains how to use the Index service API from frontend or tooling agents.
+This document describes how to integrate with the Index service APIs.
 
 - Base URL: `https://index.moy.cat`
 - API version prefix: `/v1`
 - Content type: `application/json`
-- Time format: RFC3339 (for example `2026-03-19T10:00:00Z`)
+- Time format: Unix timestamp in seconds (for example `1710832800`)
 
-## 1. API Overview
-
-The service has two main API groups:
-
-1. Public search API for runtime search in your site/app.
-2. Protected ingestion API for full snapshot indexing (replace-all behavior).
-
-Current endpoints:
+## 1. Endpoints
 
 - `GET /healthz`
 - `GET /readyz`
 - `GET /v1/search`
-- `PUT /v1/posts/snapshot` (requires Bearer token)
+- `POST /v1/index` (authenticated)
 
-## 2. Common Conventions
+## 2. Common Rules
 
-### 2.1 Request Headers
+### 2.1 Headers
 
-Use these headers when applicable:
+Use these headers when needed:
 
-- `Content-Type: application/json` (for JSON request body)
-- `Authorization: Bearer <token>` (required for ingestion endpoint)
-- `X-Request-Id: <id>` (optional but recommended for tracing)
+- `Content-Type: application/json`
+- `Authorization: Bearer <token>` for `POST /v1/index`
+- `X-Request-Id: <id>` (optional, recommended for traceability)
 
-### 2.2 Error Shape
+### 2.2 Error Response
 
-When request fails, API returns:
+Error shape is consistent:
 
 ```json
 {
@@ -50,19 +43,15 @@ Error code mapping:
 - `invalid_argument` -> HTTP `400`
 - `internal` -> HTTP `500`
 
-## 3. Health Endpoints
+## 3. Health APIs
 
-### 3.1 GET /healthz
-
-Check process health.
-
-Request:
+### 3.1 `GET /healthz`
 
 ```bash
 curl -i https://index.moy.cat/healthz
 ```
 
-Response `200`:
+Success (`200`):
 
 ```json
 {
@@ -70,17 +59,13 @@ Response `200`:
 }
 ```
 
-### 3.2 GET /readyz
-
-Check readiness.
-
-Request:
+### 3.2 `GET /readyz`
 
 ```bash
 curl -i https://index.moy.cat/readyz
 ```
 
-Response `200`:
+Success (`200`):
 
 ```json
 {
@@ -88,26 +73,26 @@ Response `200`:
 }
 ```
 
-## 4. Search API (Public)
+## 4. Search API
 
-### 4.1 GET /v1/search
+### 4.1 `GET /v1/search`
 
-Search indexed posts by keyword.
+Search indexed posts.
 
-Query parameters:
+Query params:
 
-- `q` (string, required): search keyword.
-- `page` (int, optional): page number, default `1`, min effectively `1`.
-- `page_size` (int, optional): default `10`, max `50`.
+- `q` (required): search keyword
+- `page` (optional): default `1`
+- `page_size` (optional): default `10`, max `50`
 
-Important runtime behavior:
+Behavior notes:
 
-- If `q` is empty -> `400 invalid_argument`.
-- If `page < 1` -> treated as `1`.
-- If `page_size < 1` -> treated as `10`.
-- If `page_size > 50` -> clamped to `50`.
+- Empty `q` returns `400 invalid_argument`
+- `page < 1` is treated as `1`
+- `page_size < 1` is treated as `10`
+- `page_size > 50` is clamped to `50`
 
-Request examples:
+Example:
 
 ```bash
 curl -G 'https://index.moy.cat/v1/search' \
@@ -116,12 +101,7 @@ curl -G 'https://index.moy.cat/v1/search' \
   --data-urlencode 'page_size=10'
 ```
 
-```bash
-curl -G 'https://index.moy.cat/v1/search' \
-  --data-urlencode 'q=golang'
-```
-
-Success response `200`:
+Success (`200`):
 
 ```json
 {
@@ -130,6 +110,7 @@ Success response `200`:
     {
       "title": "Go 和中文检索",
       "url": "https://example.com/1",
+      "published_at": 1710057600,
       "snippet": "...关于中文搜索能力和分词策略...",
       "score": 1.53,
       "matched_terms": ["中文", "检索"]
@@ -140,153 +121,87 @@ Success response `200`:
 
 Hit fields:
 
-- `title` (string)
-- `url` (string)
-- `snippet` (string)
-- `score` (number, optional)
-- `matched_terms` (string array, optional)
+- `title`
+- `url`
+- `published_at` (Unix timestamp, seconds)
+- `snippet`
+- `score` (optional)
+- `matched_terms` (optional)
 
-### 4.2 Search Error Example
+## 5. Index API (Reindex All)
 
-```bash
-curl -G 'https://index.moy.cat/v1/search' --data-urlencode 'q='
-```
+### 5.1 `POST /v1/index`
 
-Response `400`:
+Upload the full current post list and reindex all data.
 
-```json
-{
-  "error": {
-    "code": "invalid_argument",
-    "message": "invalid_argument: query is required"
-  }
-}
-```
+Auth:
 
-## 5. Snapshot Ingestion API (Protected)
+- Required: `Authorization: Bearer <index-token>`
 
-### 5.1 PUT /v1/posts/snapshot
+Request body:
 
-Upload a full snapshot of all posts. This is a replace-all operation.
+- `posts` (array, required; can be empty)
 
-Authentication:
+Each `posts[i]` item:
 
-- Required: `Authorization: Bearer <ingest-token>`
+- `title` (required)
+- `url` (required, valid URL)
+- `content` (required)
+- `published_at` (required, Unix timestamp in seconds)
 
-Top-level request fields:
+Important semantics:
 
-- `snapshot_id` (string, required): stable idempotency key for this snapshot.
-- `generated_at` (string RFC3339, required): snapshot generation time.
-- `posts` (array, required; can be empty): full current post list.
-
-Per-post fields:
-
-- `id` (string, required)
-- `title` (string, required)
-- `url` (string, required, must be valid URL)
-- `content` (string, required)
-- `published_at` (string RFC3339, required)
-
-Semantics:
-
-- The uploaded `posts` is treated as the full source of truth.
-- Service upserts all posts in this snapshot.
-- Service deletes posts not present in this snapshot.
-- Re-sending the same `snapshot_id` is idempotent.
+- This is **reindex all**, not incremental upsert.
+- Service deletes all existing indexed rows, then inserts provided `posts` inside one transaction.
+- Post IDs are generated by database automatically; client never sends `id`.
 
 Request example:
 
 ```bash
-curl -X PUT 'https://index.moy.cat/v1/posts/snapshot' \
+curl -X POST 'https://index.moy.cat/v1/index' \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <your-token>' \
   -d '{
-    "snapshot_id": "snapshot-2026-03-19T10:00:00Z",
-    "generated_at": "2026-03-19T10:00:00Z",
     "posts": [
       {
-        "id": "post-1",
         "title": "Example",
         "url": "https://example.com/p/1",
         "content": "Post content...",
-        "published_at": "2026-03-01T10:00:00Z"
+        "published_at": 1709287200
       },
       {
-        "id": "post-2",
         "title": "Another post",
         "url": "https://example.com/p/2",
         "content": "Second post content",
-        "published_at": "2026-03-10T08:00:00Z"
+        "published_at": 1710057600
       }
     ]
   }'
 ```
 
-Success response `200`:
+Success (`200`):
 
 ```json
 {
-  "status": "replaced",
-  "snapshot_id": "snapshot-2026-03-19T10:00:00Z",
+  "status": "indexed",
   "post_count": 2
 }
 ```
 
-### 5.2 Deletion by Snapshot
+### 5.2 Clear All Indexed Posts
 
-If you want to remove old posts, just omit them from the next snapshot.
-
-If you want to clear all posts, send an empty snapshot list:
+Send an empty `posts` list:
 
 ```bash
-curl -X PUT 'https://index.moy.cat/v1/posts/snapshot' \
+curl -X POST 'https://index.moy.cat/v1/index' \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <your-token>' \
-  -d '{
-    "snapshot_id": "snapshot-clear-2026-03-19T11:00:00Z",
-    "generated_at": "2026-03-19T11:00:00Z",
-    "posts": []
-  }'
+  -d '{ "posts": [] }'
 ```
 
-### 5.3 Ingestion Error Examples
+## 6. Frontend/Agent Examples
 
-Missing/invalid token:
-
-```json
-{
-  "error": {
-    "code": "unauthorized",
-    "message": "unauthorized"
-  }
-}
-```
-
-Invalid time format:
-
-```json
-{
-  "error": {
-    "code": "invalid_argument",
-    "message": "invalid_argument: generated_at must be RFC3339"
-  }
-}
-```
-
-Duplicate post ID in one snapshot:
-
-```json
-{
-  "error": {
-    "code": "invalid_argument",
-    "message": "invalid_argument: duplicate post id: post-1"
-  }
-}
-```
-
-## 6. Frontend Integration Notes
-
-### 6.1 Browser Search Example (fetch)
+### 6.1 Browser Search (`fetch`)
 
 ```js
 const baseUrl = "https://index.moy.cat";
@@ -306,67 +221,41 @@ export async function searchPosts(query, page = 1, pageSize = 10) {
 
   const data = await resp.json();
   if (!resp.ok) {
-    throw new Error(data?.error?.message || "search request failed");
+    throw new Error(data?.error?.message || "search failed");
   }
   return data;
 }
 ```
 
-### 6.2 Snapshot Publisher Example (Node/Agent)
+### 6.2 Server-Side Index Publisher (`fetch`)
 
 ```js
 const baseUrl = "https://index.moy.cat";
 
-export async function publishSnapshot(token, snapshot) {
-  const resp = await fetch(`${baseUrl}/v1/posts/snapshot`, {
-    method: "PUT",
+export async function reindexAll(token, posts) {
+  const resp = await fetch(`${baseUrl}/v1/index`, {
+    method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
       "X-Request-Id": crypto.randomUUID(),
     },
-    body: JSON.stringify(snapshot),
+    body: JSON.stringify({ posts }),
   });
 
   const data = await resp.json();
   if (!resp.ok) {
-    throw new Error(data?.error?.message || "snapshot publish failed");
+    throw new Error(data?.error?.message || "reindex failed");
   }
   return data;
 }
 ```
 
-Snapshot object shape:
+## 7. Integration Checklist
 
-```js
-{
-  snapshot_id: "snapshot-2026-03-19T10:00:00Z",
-  generated_at: "2026-03-19T10:00:00Z",
-  posts: [
-    {
-      id: "post-1",
-      title: "Example",
-      url: "https://example.com/p/1",
-      content: "Post content...",
-      published_at: "2026-03-01T10:00:00Z"
-    }
-  ]
-}
-```
-
-## 7. Recommended Client-Side Strategies
-
-- Always send a unique, stable `snapshot_id` for each generated snapshot.
-- Keep ingestion token only in trusted server-side agents, never in browser frontend code.
-- Validate/normalize URL and RFC3339 time before request to reduce `400` errors.
-- For search UI, debounce input and cancel stale requests.
-- Send `X-Request-Id` for easier troubleshooting with backend logs.
-
-## 8. Quick Checklist for Frontend Agent
-
-- Use base URL `https://index.moy.cat`.
-- Use `GET /v1/search` for runtime search.
-- Use `PUT /v1/posts/snapshot` with Bearer token for ingestion.
-- Treat ingestion as full replacement, not incremental upsert.
-- Handle `401`, `400`, and `500` with the documented error schema.
-
+- Use base URL `https://index.moy.cat`
+- Use `GET /v1/search` for runtime search
+- Use `POST /v1/index` to reindex all posts
+- Never send post `id` in indexing payload
+- Keep index token on trusted server-side only
+- Handle `401`, `400`, `500` via the standard error shape

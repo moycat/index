@@ -8,7 +8,6 @@ import (
 func TestPostValidate(t *testing.T) {
 	now := time.Now().UTC()
 	valid := Post{
-		ID:          "post-1",
 		Title:       "title",
 		URL:         "https://example.com/1",
 		Content:     "content",
@@ -21,7 +20,7 @@ func TestPostValidate(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "valid", post: valid},
-		{name: "missing id", post: Post{}, wantErr: true},
+		{name: "missing title", post: Post{}, wantErr: true},
 		{name: "invalid url", post: func() Post { p := valid; p.URL = "bad"; return p }(), wantErr: true},
 	}
 
